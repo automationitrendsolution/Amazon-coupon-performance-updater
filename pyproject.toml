@@ -1,0 +1,21 @@
+[project]
+name = "amazon-coupon-performance-updater"
+version = "1.0.0"
+description = "Amazon 'Coupon Performance' report (SP-API), daily, for powerbidb.api_coupon_data"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pymysql>=1.1,<2",
+    "python-dotenv>=1.0,<2",
+    "requests>=2.31,<3",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -p no:cacheprovider"  # no .pytest_cache folder; run tests with `python -B` for no __pycache__

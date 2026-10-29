@@ -1,0 +1,14 @@
+# Amazon coupon performance updater on the Linux cron server. Install with `crontab -e`. Absolute paths: cron's PATH is minimal.
+# Run the job in ONE place only (not also on the Windows PC). Use the path `which uv` shows.
+# Each run appends one line to logs/cron.log; details are in logs/coupon_updater.log.
+# `mkdir -p logs` once before installing: the shell opens logs/cron-output.log before Python starts.
+MAILTO=""
+
+# Coupon performance (SP-API) -> api_coupon_data every 5 hours (00:00, 05:00, 10:00, 15:00, 20:00 server time;
+# cron restarts at midnight, so the last gap is 4 h). --refetch asks Amazon for a fresh report every run:
+# without it, every run after the day's first write would stop at once ("already written").
+# A run waits at most 2 h for Amazon (COUPON_POLL_TIMEOUT_SECONDS), well inside the 5 h gap; overlaps exit 11.
+0 */5 * * * cd /data/cron/amazon-coupon-performance-updater && /root/.local/bin/uv run --no-sync python run.py --daily --apply --refetch --quiet >> logs/cron-output.log 2>&1
+
+# Optional: each run keeps its raw report in data/reports/ (about 5 a day); delete those older than 30 days.
+30 1 * * * find /data/cron/amazon-coupon-performance-updater/data/reports -name 'coupons_*' -mtime +30 -delete
