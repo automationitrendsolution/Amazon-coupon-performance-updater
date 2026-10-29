@@ -39,6 +39,23 @@ def test_daily_apply_writes_once(amazon, fake_table, project_dirs, tmp_path):
     assert "inserted=2" in history[0] and "already written" in history[1]
 
 
+def test_no_arguments_is_the_scheduled_job(amazon, fake_table, tmp_path):
+    assert run.main([]) == 0
+    assert len(fake_table.rows) == 2
+    calls = len(amazon.calls)
+
+    assert run.main([]) == 0  # 5 hours later: a fresh report again, not "already written"
+    assert len(amazon.calls) > calls and len(fake_table.rows) == 2
+    history = (tmp_path / "logs" / "cron.log").read_text(encoding="utf-8").splitlines()
+    assert all("(scheduled job)" in line and "inserted=2" in line for line in history)
+
+
+def test_no_mode_with_dry_run_only_previews(amazon, fake_table, capsys):
+    assert run.main(["--dry-run"]) == 0
+    assert fake_table.rows == []
+    assert "dry run: nothing written" in capsys.readouterr().out
+
+
 def test_window_needs_an_action(amazon):
     with pytest.raises(SystemExit):
         run.main(["--window", "2026-09-01", "2026-10-01"])

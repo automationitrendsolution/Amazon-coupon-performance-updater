@@ -13,10 +13,9 @@ requested again the same day.
 
 Running under cron
 ------------------
-The scheduler (Windows Task Scheduler, deploy/install_task.ps1, or cron, deploy/crontab.example)
-calls ``run.py --daily --apply --quiet`` every day at 09:00 IST, with a backup run at 15:00 IST for
-when Amazon was slow. The first run that completes writes the day; the backup finds it written and
-stops at once. Overlapping runs are refused by an internal lock (exit 11).
+Cron (deploy/crontab.example) calls plain ``run.py`` every 5 hours. With no mode it is the
+scheduled job, ``--daily --apply --refetch``: every run requests a fresh report and writes it.
+Overlapping runs are refused by an internal lock (exit 11).
 
 Exit codes
 ----------
@@ -48,6 +47,7 @@ from app.schedule import RunLock, Window, daily_window, parse_date, today_utc, v
 
 _HELP_EPILOG = """
 examples:
+  python run.py                                           the scheduled job: fresh report, written to MySQL (cron)
   python run.py --inspect                                 read-only check of the table
   python run.py --daily                                   fetch, validate and preview today's window; never writes
   python run.py --daily --apply                           write it to MySQL (cron)
@@ -68,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=_HELP_EPILOG,
     )
     parser.add_argument("--version", action="version", version=f"amazon-coupon-performance-updater {__version__}")
-    modes = parser.add_mutually_exclusive_group(required=True)
+    modes = parser.add_mutually_exclusive_group()  # none: the scheduled job, --daily --apply --refetch
     modes.add_argument("--inspect", action="store_true", help="Inspect the table (read-only).")
     modes.add_argument("--daily", action="store_true",
                        help="Coupons starting from COUPON_LOOKBACK_DAYS ago to COUPON_LOOKAHEAD_DAYS ahead (cron).")
@@ -87,6 +87,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    if not (args.inspect or args.daily or args.window):
+        # Plain `run.py` is the scheduled job: a fresh report every run, written to MySQL.
+        # `run.py --dry-run` still only previews.
+        args.daily, args.refetch = True, True
+        args.apply = not args.dry_run
     if args.inspect and (args.dry_run or args.apply or args.refetch):
         parser.error("--inspect cannot be combined with --dry-run/--apply/--refetch")
     if args.window and not (args.dry_run or args.apply):
@@ -124,7 +129,8 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # noqa: BLE001
         logger.exception("Unexpected failure")
         code, summary = 1, f"{type(exc).__name__}: {exc}"
-    append_run(settings.log_dir, f"{started:%Y-%m-%d %H:%M:%S} exit={code} {' '.join(argv or sys.argv[1:])} | {summary}")
+    command = " ".join(argv if argv is not None else sys.argv[1:]) or "(scheduled job)"
+    append_run(settings.log_dir, f"{started:%Y-%m-%d %H:%M:%S} exit={code} {command} | {summary}")
     return code
 
 

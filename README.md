@@ -65,7 +65,7 @@ copy .env.example .env                           # then fill in your credentials
 
 .venv\Scripts\python.exe -B run.py --inspect     # 1. check the database connection (read-only)
 .venv\Scripts\python.exe -B run.py --daily       # 2. dry run: fetch and preview, writes nothing
-.venv\Scripts\python.exe -B run.py --daily --apply   # 3. write to MySQL
+.venv\Scripts\python.exe -B run.py               # 3. fetch a fresh report and write it to MySQL
 ```
 
 > **Tip:** a dry run saves the rows it fetched to `data/reports/coupons_<from>_<to>_records.csv`, so you can
@@ -117,7 +117,7 @@ Find the full path to `uv` with `which uv`, then add these lines with `crontab -
 MAILTO=""
 
 # Coupon performance every 5 hours
-0 */5 * * * cd /data/cron/amazon-coupon-performance-updater && /root/.local/bin/uv run --no-sync python run.py --daily --apply --refetch --quiet >> logs/cron-output.log 2>&1
+0 */5 * * * cd /data/cron/amazon-coupon-performance-updater && /root/.local/bin/uv run --no-sync python run.py >> logs/cron-output.log 2>&1
 
 # Delete downloaded reports older than 30 days
 30 1 * * * find /data/cron/amazon-coupon-performance-updater/data/reports -name 'coupons_*' -mtime +30 -delete
@@ -126,7 +126,7 @@ MAILTO=""
 | Detail | |
 | --- | --- |
 | Run times | 00:00, 05:00, 10:00, 15:00, 20:00 (server time). Cron restarts at midnight, so the last gap is 4 hours. |
-| `--refetch` | **Required.** Without it, only the first run of each day writes; later runs see the day as done and stop. |
+| Command | Plain `run.py` is the scheduled job: every run fetches a fresh report and writes it. Cron provides the 5-hour timing. |
 | Overlaps | A run waits at most 2 hours for Amazon. If a run is still going when the next starts, the new one exits safely (code 11). |
 
 Confirm with `crontab -l`. A ready-to-copy version is in [`deploy/crontab.example`](deploy/crontab.example).
@@ -187,10 +187,11 @@ On Linux use `uv run python run.py …`; on Windows use `.venv\Scripts\python.ex
 
 | Command | What it does | Writes to MySQL? |
 | --- | --- | :---: |
+| `run.py` | **The scheduled job.** Fetches a fresh report for the current window and writes it | **Yes** |
+| `run.py --dry-run` | Same fetch, but only previews the change | No |
 | `run.py --inspect` | Shows the table's columns, row count and coupon count | No |
-| `run.py --daily` | Fetches the current window and previews the change | No |
-| `run.py --daily --apply` | Fetches the current window and writes it | **Yes** |
-| `run.py --daily --apply --refetch` | Same, but always requests a fresh report from Amazon | **Yes** |
+| `run.py --daily` | Fetches the current window and previews the change (reuses today's report if downloaded) | No |
+| `run.py --daily --apply` | Writes the current window once per day; later runs that day stop at once | **Yes** |
 | `run.py --window 2026-09-01 2026-10-01 --dry-run` | Previews coupons starting in a custom date range | No |
 | `run.py --window 2026-09-01 2026-10-01 --apply` | Writes coupons starting in a custom date range | **Yes** |
 | `run.py --help` | Lists every option | – |
@@ -244,7 +245,7 @@ Each row is one **coupon + ASIN** combination in `powerbidb.api_coupon_data`:
 A healthy `logs/cron.log` looks like this:
 
 ```
-2026-10-29 12:06:45 exit=0 --daily --apply | 2026-09-29..2026-11-08 report=2001861020755 coupons=61 rows=1335 deleted=1328 inserted=1335
+2026-10-29 15:00:02 exit=0 (scheduled job) | 2026-09-29..2026-11-08 report=2001861020755 coupons=61 rows=1335 deleted=1328 inserted=1335
 ```
 
 ### Exit codes
@@ -272,7 +273,7 @@ A healthy `logs/cron.log` looks like this:
 | `MySQL connection failed` (exit 3) | Check `DB_HOST`/`DB_PORT` and that the server's IP is allowed through the MySQL firewall |
 | Amazon rejects the date range | Reduce `COUPON_LOOKBACK_DAYS` or `COUPON_LOOKAHEAD_DAYS` |
 | Cron never runs | Check `crontab -l`, use the full path to `uv`, and make sure `logs/` exists |
-| Only one update per day | The cron line is missing `--refetch` |
+| Only one update per day | The cron line uses `--daily --apply`; use plain `run.py` instead |
 | New data not visible in Power BI | The data is in MySQL; refresh the Power BI dataset |
 
 ---

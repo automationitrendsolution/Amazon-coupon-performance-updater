@@ -5,10 +5,10 @@
 MAILTO=""
 
 # Coupon performance (SP-API) -> api_coupon_data every 5 hours (00:00, 05:00, 10:00, 15:00, 20:00 server time;
-# cron restarts at midnight, so the last gap is 4 h). --refetch asks Amazon for a fresh report every run:
-# without it, every run after the day's first write would stop at once ("already written").
+# cron restarts at midnight, so the last gap is 4 h). Plain `run.py` is the scheduled job: a fresh report every
+# run, written to MySQL (same as --daily --apply --refetch).
 # A run waits at most 2 h for Amazon (COUPON_POLL_TIMEOUT_SECONDS), well inside the 5 h gap; overlaps exit 11.
-0 */5 * * * cd /data/cron/amazon-coupon-performance-updater && /root/.local/bin/uv run --no-sync python run.py --daily --apply --refetch --quiet >> logs/cron-output.log 2>&1
+0 */5 * * * cd /data/cron/amazon-coupon-performance-updater && /root/.local/bin/uv run --no-sync python run.py >> logs/cron-output.log 2>&1
 
 # Optional: each run keeps its raw report in data/reports/ (about 5 a day); delete those older than 30 days.
 30 1 * * * find /data/cron/amazon-coupon-performance-updater/data/reports -name 'coupons_*' -mtime +30 -delete
